@@ -1,0 +1,76 @@
+---
+title: "Maps Investigating"
+---
+**Citaiton:**
+  
+  
+  - Census website containing 2024 total revune for each state based on taxes: https://www.census.gov/data/tables/2024/econ/stc/2024-annual.html
+  
+  
+  - Census website containing 2024 voter registration (and if individuals voted) data based on age range and sex: https://www.census.gov/data/tables/time-series/demo/voting-and-registration/p20-587.html
+
+
+```{r, echo=FALSE}
+#| message: false
+#| warning: false
+
+# Initial packages required (we'll be adding more)
+library(tidyverse)
+library(mdsr)
+library(dplyr)
+library(tidyr)
+library(maps)
+```
+
+
+```{r, echo=FALSE}
+#| message: false
+#| warning: false
+
+FY2024_State_taxes <- read.csv("FY2024_State_taxes.csv", skip = 3)
+colnames(FY2024_State_taxes) <- as.character(FY2024_State_taxes[1, ])
+FY2024_State_taxes <- FY2024_State_taxes[-1, ]
+colnames(FY2024_State_taxes) <- make.names(trimws(colnames(FY2024_State_taxes)))
+
+tax_data <- FY2024_State_taxes %>%
+  filter('Tax.Type' == "Total Taxes")
+# Pivot to long format
+tax_long <- tax_data %>% 
+  pivot_longer(cols = -c(`Tax.Type`, Item),
+               names_to = "region",
+               values_to = "Total_Taxes")
+
+# Clean region names
+tax_long$region <- tolower(tax_long$region)
+tax_long <- tax_long %>% filter(!grepl("united states", region))
+
+# Convert Total_Taxes to numeric
+tax_long$Total_Taxes <- as.numeric(gsub(",", "", tax_long$Total_Taxes))
+```
+
+```{r, echo=FALSE}
+#| message: false
+#| warning: false
+us_states <- map_data("state")
+head(us_states)
+us_states |>
+  ggplot(mapping = aes(x = long, y = lat,
+                      group = group)) + 
+  geom_polygon(fill = "white", color = "black")
+
+map_data_joined <- merge(us_states, tax_long,
+                         by.x = "region", by.y = "region",
+                         all.x = TRUE)
+
+map_data_joined$Total_Taxes <- (map_data_joined$Total_Taxes - min(map_data_joined$Total_Taxes, na.rm = TRUE)) /
+                               (max(map_data_joined$Total_Taxes, na.rm = TRUE) - min(map_data_joined$Total_Taxes, na.rm = TRUE))
+
+ggplot(map_data_joined, aes(x = long, y = lat, group = group)) +
+  geom_polygon(aes(fill = Total_Taxes), color = "black") +
+  coord_fixed(1.3) +
+  scale_fill_viridis_c()
+```
+A map showing each state in the contiguous US. And a map showing the total state taxes per state. 1 being the highest level of taxes and 0 being the lowest level of taxes.
+
+
+

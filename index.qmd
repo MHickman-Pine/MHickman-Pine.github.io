@@ -1,11 +1,22 @@
 ---
-title: "MHickman-Pine.github.io"
+title: "Max Hickman"
+image: IMG_8711.jpeg
+toc: false
+about: 
+  template: jolla
+  image-shape: round
+  image-width: 17em
+  links:
+    - text: GitHub
+      href: https://github.com/MHickman-Pine
 ---
-
-This is a Quarto website.
-
-To learn more about Quarto websites visit <https://quarto.org/docs/websites>.
-
-```{r}
+```{r, echo=FALSE}
+#| eval: FALSE
 1 + 1
+library(usethis)
+library(gitcreds)
+library(credentials)
 ```
+
+
+Hello, my name is Max Hickman. I am currently a Jr. at St. Olaf college. I am majoring in environmental studies and concentrating in statistics and data science. This website has been created for my data science 2 class. 

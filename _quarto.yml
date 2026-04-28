@@ -3,11 +3,13 @@ project:
   output-dir: docs
 
 website:
-  title: "MHickman-Pine.github.io"
+  title: "Max Hickman"
   navbar:
     left:
       - href: index.qmd
         text: Home
+      - Mini-Project1.qmd
+      - Map.qmd
       - about.qmd
 
 format:

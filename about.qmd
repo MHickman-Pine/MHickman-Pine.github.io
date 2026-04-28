@@ -2,8 +2,5 @@
 title: "About"
 ---
 
-About this site
+This is a site made by Max Hickman, a data science 2 student.
 
-```{r}
-1 + 1
-```

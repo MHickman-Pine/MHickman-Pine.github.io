@@ -1,0 +1,183 @@
+---
+title: "Mini-Project1"
+---
+
+```{r, echo=FALSE}
+#| message: false
+#| warning: false
+library(tidyverse)
+library(tidytext)
+library(textdata)
+library(wordcloud)
+library(wordcloud2)
+library(viridis)
+library(ggthemes)
+library(gutenbergr)
+library(RColorBrewer)
+```
+
+**Setting up the Data**
+
+**Citation:** Porter, Rachel; Colin R. Case; Sarah A. Treul, 2025, "CampaignView, a database of policy platforms and biographical narratives for congressional candidates", <https://doi.org/10.7910/DVN/JIEAPT>, Harvard Dataverse, V1; biographical_narratives.csv 
+
+```{r, echo=FALSE}
+bio_narrative <- read.csv("biographical_narratives.csv")
+
+select_bio_narrative <- bio_narrative|>
+  select(candidate_webname, state_postal, cand_party, win_general, biography_text)
+#Keeping only the columns I plan to focus on in the data set
+```
+
+*Important variables*
+
+- candidate_webname: The name of the Candidate running for Congress
+
+- state_postal: A two letter representation of the state the candidate is running in
+
+- cand_party: The party the candidate belongs to
+
+- biography_text: The biography of the candidate
+
+- win_general: if the candidate won the general election
+
+- year: year of the candidtate's election (2018-2022)
+
+**Analysis**
+
+First I wanted to find what the most commonly used words were by candidates. Then I wanted to see how candidates from different parties favored certin words.
+
+```{r, echo=FALSE}
+#| include: FALSE
+#| message: false
+#| warning: false
+get_stopwords() |> print(n = 50)   
+get_stopwords(source = "smart") |> print(n = 50) 
+smart_stopwords <- get_stopwords(source = "smart")
+#setting up stopwords for future use
+
+tidy_bio <- select_bio_narrative |>
+  mutate(line = row_number()) |>
+  unnest_tokens(word, biography_text, token = "words")
+#making the candidates speeches analyzable
+```
+
+```{r, echo=FALSE}
+#| message: false
+#| warning: false
+tidy_bio |>
+  anti_join(smart_stopwords, by = "word") |>
+  count(word, sort = TRUE) |>
+  filter(word != "NA") |>
+  slice_max(n, n = 20) |>
+  ggplot(aes(fct_reorder(word, n), n)) +
+  geom_col() +
+  coord_flip()
+
+tidy_bio |>
+  anti_join(smart_stopwords, by = "word") |>
+  count(word, sort = TRUE) |>
+  filter(word != "NA") |>
+  with(wordcloud(words = word,
+    freq = n,
+    max.words = 150,
+    random.order = FALSE,
+    colors = brewer.pal(8, "Dark2")))
+
+#now sorting most used words based on the Candidate's party
+tidy_bio |>
+  anti_join(smart_stopwords, by = "word") |>
+  count(cand_party, word, sort = TRUE) |>
+  group_by(cand_party) |>
+  slice_max(n, n = 10) |>
+  ungroup() |>
+  ggplot(aes(n, fct_reorder(word, n), fill = cand_party)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~cand_party, scales = "free") +
+  labs(title = "Common Words by Candidate Party",
+    x = "Frequency",
+    y = "Word")
+
+
+```
+
+The last graph made is a separated bar graph with one depicting Democrat candidates and the words they predominantly used and Republican candidates and words they predominantly used. The frequency for Democrats ranged from \~2,800 to \~3,800 whereas Republicans ranged from \~2,400 to \~3,700 on the x-axis or frequency. On the y-axis the most common words are listed there. From this graph we can see that Democrats consistently use or repeat the same high profile words while Republicans use the same words less frequently with the exception of years.
+
+```{r, echo=FALSE}
+#| include: FALSE
+get_sentiments(lexicon = "afinn")
+get_sentiments(lexicon = "nrc")
+get_sentiments(lexicon = "bing")
+
+bing_sentiments <- get_sentiments(lexicon = "bing")
+```
+
+```{r, echo=FALSE}
+#| include: FALSE
+tidy_bio |>
+  inner_join(bing_sentiments, by = "word") |>
+  count(sentiment)
+#creating a new data set that assigns sentiments to words
+```
+
+Next, I will look at the overall presence of positive and negative words that are present in the candidate's biographies. and then seperate these sentiments by party.
+
+```{r, echo=FALSE}
+#| message: false
+#| warning: false
+#| include: FALSE
+tidy_bio |>
+  inner_join(bing_sentiments) |>
+  count(sentiment, word, sort = TRUE) |>
+  group_by(sentiment) |>
+  slice_max(n, n = 10) |>
+  ungroup() |>
+  ggplot(aes(x = fct_reorder(word, n), y = n, fill = sentiment)) +
+    geom_col() +  
+    coord_flip() +
+    facet_wrap(~ sentiment, scales = "free")
+```
+
+```{r, echo=FALSE}
+#| message: false
+#| warning: false
+tidy_bio |>
+  inner_join(bing_sentiments, by = "word") |>
+  count(cand_party, sentiment) |>
+  ggplot(aes(cand_party, n, fill = sentiment)) +
+  geom_col(position = "dodge") +
+  labs(title = "Sentiment in Candidate Biographies by Party",
+    x = "Party",
+    y = "Number of Sentiment Words")
+```
+
+This second bar graph depicts the two parties on the x-axis and the number of sentiment of words on the y-axis. they range from \~1,900 to around \~5,200. From this graph we can see that both Democrats and Republicans seem to have similar numbers of words with negative sentiments but Democrats have \~7,000 more words with a positive sentiment than Republicans.
+
+Next I wanted to make a sentiment chart based on Democrat and Republican candidates based on if the words were positive or negative.
+
+```{r, echo=FALSE}
+#| message: false
+#| warning: false
+tidy_bio |>
+  filter(str_detect(cand_party, "Democrat|Republican")) |>
+  inner_join(bing_sentiments, by = "word") |>
+  count(cand_party, sentiment, word, sort = TRUE) |>
+  group_by(cand_party, sentiment) |>
+  slice_max(n, n = 10) |>
+  ungroup() |>
+  ggplot(aes(x = fct_reorder(word, n), y = n, fill = sentiment)) +
+  geom_col(show.legend = FALSE) +
+  coord_flip() +
+  facet_grid(sentiment ~ cand_party, scales = "free") +
+  labs(
+    title = "Top Positive and Negative Words in Candidate Biographies",
+    subtitle = "Comparison of Democrats and Republicans",
+    x = "Word",
+    y = "Frequency") +
+  theme_minimal()
+```
+
+In this bar graph we see two x axis, one representing if it is a Democrat or Republican candidate and one representing the frequency of each word. On the y-axis we can see each of the most commonly used words by candidates along with if they are positive or negative. The frequecy ranges from 0 to 2500. Interestingly the most used negative word by Republicans is conservative which in this context is not a negative word so much as a political ideology. We can also see that work is by far the most popular positive word for both parties to use in their biographies.
+
+**Conclusion**
+
+Overall the four most common words (used 6,000 or more times) were years, school, district, and congress. These make the most sense as they are all candidates running for congress. Schooling is also a typical item to include on a biography to indicate qualification for congress. Years relates to amount of time in previous positions and district simply relates to what district they're running or where they have previous experience. Taking all of these together it makes sense that these biographies act as a resume of the candidates whereas almost as popular words such as family, business, public, and service would relate to what they would want to do if they were elected. In comparing candidate's party and the positive verses negative words they use we can see that even though Democrats seem to use more positively associated word likely because this aligns with a more progressive ideology being focused on acceptance and care for others. Interestingly work was by far the most commonly used positive word by both parties was work most likely as all biographies would include phrasing like 'I would work for you' or other similar sentiments.
