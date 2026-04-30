@@ -1,76 +1,161 @@
 ---
 title: "Maps Investigating"
+format: html
+runtime: shiny
 ---
+
 **Citaiton:**
-  
-  
-  - Census website containing 2024 total revune for each state based on taxes: https://www.census.gov/data/tables/2024/econ/stc/2024-annual.html
-  
-  
-  - Census website containing 2024 voter registration (and if individuals voted) data based on age range and sex: https://www.census.gov/data/tables/time-series/demo/voting-and-registration/p20-587.html
 
+- Census website containing 2024 total revune for each state based on taxes: https://www.census.gov/data/tables/2024/econ/stc/2024-annual.html
 
+- Census website containing 2024 voter registration (and if individuals voted) data based on age range and sex: https://www.census.gov/data/tables/time-series/demo/voting-and-registration/p20-587.html
 ```{r, echo=FALSE}
 #| message: false
 #| warning: false
 
 # Initial packages required (we'll be adding more)
 library(tidyverse)
+library(ggplot2)
 library(mdsr)
 library(dplyr)
 library(tidyr)
 library(maps)
-```
-
-
-```{r, echo=FALSE}
-#| message: false
-#| warning: false
-
-FY2024_State_taxes <- read.csv("FY2024_State_taxes.csv", skip = 3)
-colnames(FY2024_State_taxes) <- as.character(FY2024_State_taxes[1, ])
-FY2024_State_taxes <- FY2024_State_taxes[-1, ]
-colnames(FY2024_State_taxes) <- make.names(trimws(colnames(FY2024_State_taxes)))
-
-tax_data <- FY2024_State_taxes %>%
-  filter('Tax.Type' == "Total Taxes")
-# Pivot to long format
-tax_long <- tax_data %>% 
-  pivot_longer(cols = -c(`Tax.Type`, Item),
-               names_to = "region",
-               values_to = "Total_Taxes")
-
-# Clean region names
-tax_long$region <- tolower(tax_long$region)
-tax_long <- tax_long %>% filter(!grepl("united states", region))
-
-# Convert Total_Taxes to numeric
-tax_long$Total_Taxes <- as.numeric(gsub(",", "", tax_long$Total_Taxes))
+library(janitor)
+library(data.table)
 ```
 
 ```{r, echo=FALSE}
 #| message: false
 #| warning: false
-us_states <- map_data("state")
-head(us_states)
-us_states |>
-  ggplot(mapping = aes(x = long, y = lat,
-                      group = group)) + 
-  geom_polygon(fill = "white", color = "black")
+TaxOrigional <- read.csv("FY2024_State_taxes.csv")
 
-map_data_joined <- merge(us_states, tax_long,
-                         by.x = "region", by.y = "region",
-                         all.x = TRUE)
+cleaningtax <- readLines("FY2024_State_taxes.csv")
+cleaningtax <- cleaningtax[-c(1:3)]
+writeLines(cleaningtax, "FY2024_State_taxes_clean.csv")
 
-map_data_joined$Total_Taxes <- (map_data_joined$Total_Taxes - min(map_data_joined$Total_Taxes, na.rm = TRUE)) /
-                               (max(map_data_joined$Total_Taxes, na.rm = TRUE) - min(map_data_joined$Total_Taxes, na.rm = TRUE))
+FY2024_State_taxes_clean <- read.csv("FY2024_State_taxes_clean.csv")
 
-ggplot(map_data_joined, aes(x = long, y = lat, group = group)) +
-  geom_polygon(aes(fill = Total_Taxes), color = "black") +
-  coord_fixed(1.3) +
-  scale_fill_viridis_c()
+Taxes <- FY2024_State_taxes_clean
+
+#6tibble(Taxes)
+
+#TaxesA <- Taxes %>%
+#  row_to_names(row_number = 1) %>%
+#  clean_names()
+
+#tibble(TaxesA)
+
+TaxesB <- transpose(Taxes)
+
+#tibble(TaxesB)
+
+TaxesC <- TaxesB %>%
+  row_to_names(row_number = 1) %>%
+  clean_names()
+
+#tibble(TaxesC)
 ```
-A map showing each state in the contiguous US. And a map showing the total state taxes per state. 1 being the highest level of taxes and 0 being the lowest level of taxes.
 
+
+
+
+
+```{r, echo=FALSE}
+#| echo: false
+#| message: false
+#| warning: false
+#| eval: true
+TaxesD <- TaxesC |>
+  mutate(tax_type = str_to_lower(tax_type))
+
+TaxesD$tax_type <- gsub("\r\n", " ", TaxesD$tax_type)
+
+#tibble(TaxesD)
+
+us_states <- ggplot2::map_data("state")
+
+TaxesE <- TaxesD |>
+  mutate(total_taxes = as.numeric(gsub(",", "", total_taxes)))
+
+TaxesE <- TaxesE |>
+  mutate(prop_taxes = total_taxes / sum(total_taxes, na.rm = TRUE))
+
+TaxesE |>
+  rename(region = tax_type) |>
+  right_join(us_states, by = "region") |>
+  ggplot(aes(x = long, y = lat, group = group)) +
+  geom_polygon(aes(fill = total_taxes), color = "black") +
+  coord_quickmap()
+```
+
+Above is showing a heatmap of total state taxes by state with a lighter blue signifying a higher dollar amount and darker blue signifying a lower amount. Below is a map where you can see the amount of income from property tax in dollars.
+
+
+```{r, echo=FALSE}
+#| message: false
+#| warning: false
+library(tidyverse)
+library(ggplot2)
+library(plotly)
+
+us_states <- ggplot2::map_data("state")
+
+TaxesE <- TaxesE |>
+  mutate(
+    region = tolower(trimws(gsub("\\s+", " ", tax_type)))
+  )
+
+df <- TaxesE |>
+  right_join(us_states, by = c("region" = "region"))
+
+tax_vars <- c(
+  "property_taxes",
+  "motor_fuels",
+  "tobacco_products",
+  "alcoholic_beverages")
+
+plots <- lapply(tax_vars, function(v) {
+
+  ggplot(df, aes(long, lat, group = group)) +
+    geom_polygon(aes(fill = .data[[v]], text = region),
+                 color = "white") +
+    coord_quickmap() +
+    theme_void()
+})
+
+p <- ggplot(df, aes(long, lat, group = group)) +
+  geom_polygon(aes(fill = property_taxes, text = region),
+               color = "white") +
+  coord_quickmap() +
+  theme_void()
+
+gp <- ggplotly(p, tooltip = c("text", "fill"))
+
+value_var <- "property_taxes"
+
+gp <- gp %>%
+  layout(
+    updatemenus = list(
+      list(
+        buttons = list(
+          list(
+            method = "restyle",
+            args = list("z", list(df$property_taxes)),
+            label = "Property Taxes"),
+          list(
+            method = "restyle",
+            args = list("z", list(df$motor_fuels)),
+            label = "Motor Fuels"),
+          list(
+            method = "restyle",
+            args = list("z", list(df$tobacco_products)),
+            label = "Tobacco Products"),
+          list(
+            method = "restyle",
+            args = list("z", list(df$alcoholic_beverages)),
+            label = "Alcoholic Beverages")))))
+
+gp
+```
 
 
