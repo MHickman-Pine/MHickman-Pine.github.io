@@ -2,14 +2,17 @@
 title: "Maps Investigating"
 format: html
 runtime: shiny
+editor_options: 
+  chunk_output_type: inline
 ---
 
 **Citaiton:**
 
 - Census website containing 2024 total revune for each state based on taxes: https://www.census.gov/data/tables/2024/econ/stc/2024-annual.html
 
-- Census website containing 2024 voter registration (and if individuals voted) data based on age range and sex: https://www.census.gov/data/tables/time-series/demo/voting-and-registration/p20-587.html
-```{r, echo=FALSE}
+- EPA website containing September 2024 landfill site data: https://www.epa.gov/lmop/landfill-technical-data
+
+```{r echo=FALSE}
 #| message: false
 #| warning: false
 
@@ -56,10 +59,6 @@ TaxesC <- TaxesB %>%
 #tibble(TaxesC)
 ```
 
-
-
-
-
 ```{r, echo=FALSE}
 #| echo: false
 #| message: false
@@ -89,7 +88,6 @@ TaxesE |>
 ```
 
 Above is showing a heatmap of total state taxes by state with a lighter blue signifying a higher dollar amount and darker blue signifying a lower amount. Below is a map where you can see the amount of income from property tax in dollars.
-
 
 ```{r, echo=FALSE}
 #| message: false
@@ -158,4 +156,130 @@ gp <- gp %>%
 gp
 ```
 
+Next
 
+```{r echo=FALSE}
+#| message: false
+#| warning: false
+Landfills <- read.csv("landfilllmopdata.csv")
+
+Landfills_state <- Landfills |>
+  group_by(State) |>
+  summarise(n_landfills = n(), .groups = "drop")
+
+state_lookup <- data.frame(
+  State = state.abb,
+  region = tolower(state.name))
+
+Landfills_state <- Landfills_state |>
+  left_join(state_lookup, by = "State")
+
+Landfills_state |>
+  right_join(us_states, by = "region") |>
+  ggplot(aes(long, lat, group = group)) +
+  geom_polygon(aes(fill = n_landfills), color = "black") +
+  coord_quickmap() +
+  scale_fill_viridis_c(na.value = "white")
+```
+Above is a density map of landfills across the US as of September of 2024. Below is an interactive map where you can choose to see how many landfills are composing, are owned publicly/privately, and if there is a LFG system in place (LFG = land fill gas, mostly methane created due to anaerobic decomposition of organic material).
+```{r, echo=FALSE}
+#| echo: false
+#| message: false
+#| warning: false
+#| eval: true
+
+Landfills_clean <- Landfills |>
+  mutate(
+    composting = ifelse(Composting. == "Yes", 1, 0),
+    lfg = ifelse(LFG.Collection.System.In.Place. == "Yes", 1, 0)
+  )
+
+state_summary <- Landfills_clean |>
+  group_by(State) |>
+  summarise(
+    composting_total = sum(composting, na.rm = TRUE),
+    lfg_total = sum(lfg, na.rm = TRUE),
+    ownership_total = n(),  # total sites (or change if you want breakdown)
+    .groups = "drop")
+
+state_summary <- state_summary |>
+  mutate(
+    composting_total = ifelse(composting_total == 0, NA, composting_total),
+    lfg_total = ifelse(lfg_total == 0, NA, lfg_total),
+    ownership_total = ifelse(ownership_total == 0, NA, ownership_total)
+  )
+
+state_lookup <- data.frame(
+  State = state.abb,
+  region = tolower(state.name))
+
+state_summary <- state_summary |>
+  left_join(state_lookup, by = "State")
+
+us_states <- map_data("state")
+
+map_data_full <- us_states |>
+  left_join(state_summary, by = "region")
+
+fig <- plot_ly()
+
+# Composting
+fig <- fig |> add_trace(
+  data = map_data_full,
+  type = "scatter",
+  mode = "lines",
+  x = ~long, y = ~lat,
+  split = ~group,
+  fill = "toself",
+  fillcolor = ~colorRampPalette(c("white","green"))(100)[
+    cut(composting_total, breaks = 100, labels = FALSE)],
+  line = list(color = "black"),
+  name = "Composting",
+  visible = TRUE)
+
+# LFG 
+fig <- fig |> add_trace(
+  data = map_data_full,
+  type = "scatter",
+  mode = "lines",
+  x = ~long, y = ~lat,
+  split = ~group,
+  fill = "toself",
+  fillcolor = ~colorRampPalette(c("white","blue"))(100)[
+    cut(lfg_total, breaks = 100, labels = FALSE)],
+  line = list(color = "black"),
+  name = "LFG",
+  visible = FALSE)
+
+# Ownership 
+fig <- fig |> add_trace(
+  data = map_data_full,
+  type = "scatter",
+  mode = "lines",
+  x = ~long, y = ~lat,
+  split = ~group,
+  fill = "toself",
+  fillcolor = ~colorRampPalette(c("white","red"))(100)[
+    cut(ownership_total, breaks = 100, labels = FALSE)],
+  line = list(color = "black"),
+  name = "Ownership",
+  visible = FALSE)
+
+# Dropdown menu
+fig <- fig |> layout(
+  updatemenus = list(
+    list(
+      y = 1,
+      buttons = list(
+        list(method = "update",
+             args = list(list(visible = c(TRUE, FALSE, FALSE))),
+             label = "Composting"),
+        list(method = "update",
+             args = list(list(visible = c(FALSE, TRUE, FALSE))),
+             label = "LFG Collection"),
+        list(method = "update",
+             args = list(list(visible = c(FALSE, FALSE, TRUE))),
+             label = "Ownership")))))
+
+fig
+```
